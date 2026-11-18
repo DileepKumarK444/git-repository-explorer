@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Dark is the default. Light overrides the same tokens. */
+:root {
+  --bg: #0f1218; --panel: #161a22; --panel2: #1c212b; --line: #262c38;
+  --fg: #dde2ec; --mute: #8d97aa; --faint: #5d667a;
+  --accent: #7d93ff; --accent-soft: #232b4d;
+  --add: #4cc38a; --add-bg: #12301f; --del: #f0716a; --del-bg: #3a1a19; --mod: #e5a84b; --mod-bg: #3a2c12;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f6f7f9; --panel: #ffffff; --panel2: #eef0f4; --line: #dde1e8;
+  --fg: #1b2030; --mute: #667086; --faint: #98a1b3;
+  --accent: #4f6bed; --accent-soft: #e6eafd;
+  --add: #1a7f4b; --add-bg: #e3f5ea; --del: #c0392b; --del-bg: #fbe7e4; --mod: #a8680a; --mod-bg: #fbf0dc;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg); --color-panel: var(--panel); --color-panel2: var(--panel2); --color-line: var(--line);
+  --color-fg: var(--fg); --color-mute: var(--mute); --color-faint: var(--faint);
+  --color-accent: var(--accent); --color-accent-soft: var(--accent-soft);
+  --color-add: var(--add); --color-add-bg: var(--add-bg); --color-del: var(--del); --color-del-bg: var(--del-bg);
+  --color-mod: var(--mod); --color-mod-bg: var(--mod-bg);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 var(--font-sans); overflow: hidden; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.grx-blame { color: var(--faint); font-style: italic; }

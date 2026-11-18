@@ -1,0 +1,479 @@
+<title>Git Repository Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: fixed app shell. Left rail sidebar, one main workspace that swaps screens, optional right detail pane. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --panel2:#eef0f4; --line:#dde1e8; --fg:#1b2030; --mute:#667086; --faint:#98a1b3;
+  --accent:#4f6bed; --accent-soft:#e6eafd; --add:#1a7f4b; --add-bg:#e3f5ea; --del:#c0392b; --del-bg:#fbe7e4;
+  --mod:#a8680a; --mod-bg:#fbf0dc; --sel:#e9ecf9;
+  --ui:'Inter',system-ui,-apple-system,sans-serif; --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1218; --panel:#161a22; --panel2:#1c212b; --line:#262c38; --fg:#dde2ec; --mute:#8d97aa; --faint:#5d667a;
+  --accent:#7d93ff; --accent-soft:#232b4d; --add:#4cc38a; --add-bg:#12301f; --del:#f0716a; --del-bg:#3a1a19;
+  --mod:#e5a84b; --mod-bg:#3a2c12; --sel:#1f2538; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --panel:#161a22; --panel2:#1c212b; --line:#262c38; --fg:#dde2ec; --mute:#8d97aa; --faint:#5d667a;
+  --accent:#7d93ff; --accent-soft:#232b4d; --add:#4cc38a; --add-bg:#12301f; --del:#f0716a; --del-bg:#3a1a19;
+  --mod:#e5a84b; --mod-bg:#3a2c12; --sel:#1f2538; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 var(--ui);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.app{display:grid;grid-template-columns:208px minmax(0,1fr);height:100%;margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px))) calc(-1*max(16px,env(safe-area-inset-right,0px)))}
+.app.collapsed{grid-template-columns:52px minmax(0,1fr)}
+.mono{font-family:var(--mono);font-size:12px}
+.mute{color:var(--mute)} .faint{color:var(--faint)}
+/* sidebar */
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.repo-chip{margin:10px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);display:flex;flex-direction:column;gap:2px;min-width:0}
+.repo-chip b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.branch{display:flex;align-items:center;gap:5px;color:var(--accent);font:12px var(--mono)}
+.nav{flex:1;overflow:auto;padding:4px 8px}
+.nav h6{margin:14px 8px 4px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.nav a{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:5px;color:var(--mute);text-decoration:none;white-space:nowrap}
+.nav a:hover{background:var(--panel2);color:var(--fg)}
+.nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.nav a .n{margin-left:auto;font-size:11px;color:var(--faint)}
+.nav svg,.ic{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.side-foot{border-top:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:2px}
+.side-foot a{display:flex;gap:9px;padding:6px 8px;color:var(--mute);text-decoration:none;border-radius:5px;cursor:pointer;white-space:nowrap}
+.side-foot a:hover{background:var(--panel2)}
+.app.collapsed .lbl,.app.collapsed .repo-chip,.app.collapsed .nav h6,.app.collapsed .nav .n{display:none}
+.app.collapsed .nav a,.app.collapsed .side-foot a{justify-content:center}
+/* main */
+main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{height:42px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.crumb{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);background:var(--panel2);border-radius:5px;white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--del)}
+.btn.ghost{background:transparent;border-color:transparent}
+.kbd{font:11px var(--mono);padding:1px 5px;border:1px solid var(--line);border-radius:4px;color:var(--mute);background:var(--panel)}
+.screen{flex:1;min-height:0;overflow:auto;display:none}
+.screen.on{display:block}
+.screen.split.on{display:grid}
+.pad{padding:18px 22px;max-width:1180px}
+h1{font-size:19px;margin:0 0 4px;font-weight:600;letter-spacing:-.01em}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute);margin:22px 0 8px;font-weight:600}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* chips */
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:9px;font:11px var(--mono);border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+.tag.br{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);background:var(--accent-soft)}
+.tag.tg{color:var(--mod);border-color:color-mix(in srgb,var(--mod) 40%,transparent);background:var(--mod-bg)}
+.tag.head{background:var(--accent);color:#fff;border-color:var(--accent)}
+.st{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:3px;font:600 10px var(--mono);flex:none}
+.st.M{background:var(--mod-bg);color:var(--mod)} .st.A,.st.U{background:var(--add-bg);color:var(--add)} .st.D{background:var(--del-bg);color:var(--del)} .st.R{background:var(--accent-soft);color:var(--accent)}
+.plus{color:var(--add)} .minus{color:var(--del)}
+/* dashboard */
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:16px;display:flex;align-items:center;gap:14px;background:var(--panel)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px}
+.rc{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;min-width:0;cursor:pointer}
+.rc:hover{border-color:var(--accent)}
+.rc .h{display:flex;align-items:center;gap:8px}
+.rc .h b{font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc .path{font:11.5px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc .msg{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc .f{display:flex;gap:10px;align-items:center;color:var(--mute);font-size:12px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.star{background:none;border:0;color:var(--faint);padding:2px} .star.on{color:var(--mod)}
+/* stat strip */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.stats div{padding:10px 14px;border-right:1px solid var(--line)} .stats div:last-child{border:0}
+.stats small{display:block;color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.stats b{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+.list{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.li{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);min-width:0}
+.li:last-child{border:0}
+.li.click{cursor:pointer} .li.click:hover{background:var(--panel2)}
+.li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font:600 9.5px var(--ui);color:#fff;flex:none}
+/* split screens */
+.split{grid-template-columns:minmax(260px,340px) minmax(0,1fr);min-height:0;overflow:hidden!important}
+.split.three{grid-template-columns:minmax(300px,1.1fr) minmax(0,1fr)}
+.pane{min-width:0;min-height:0;overflow:auto;background:var(--panel)}
+.pane+.pane{border-left:1px solid var(--line)}
+.pane.plain{background:var(--bg)}
+.ph{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--line);padding:8px 12px;display:flex;align-items:center;gap:8px}
+.ph input,.field{height:28px;border:1px solid var(--line);background:var(--bg);border-radius:5px;padding:0 9px;min-width:0}
+.ph input{flex:1}
+/* tree */
+.tr{display:flex;align-items:center;gap:6px;padding:3px 10px;cursor:pointer;white-space:nowrap}
+.tr:hover{background:var(--panel2)} .tr.on{background:var(--accent-soft)}
+.tr .s{margin-left:auto;font:600 10px var(--mono)}
+/* code */
+.code{font:12px/20px var(--mono);min-width:max-content}
+.cl{display:grid;grid-template-columns:150px 42px 1fr;min-width:0}
+.cl .bl{color:var(--faint);padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;cursor:default;border-right:1px solid var(--line)}
+.cl .bl.first:hover{color:var(--accent)}
+.cl .no{text-align:right;color:var(--faint);padding-right:10px;user-select:none}
+.cl .tx{white-space:pre;padding-right:20px}
+.cl.cur{background:var(--sel)}
+.ghost-blame{color:var(--faint);font-style:italic;margin-left:28px;opacity:.9}
+.k{color:#a572d6}.s1{color:var(--add)}.c{color:var(--faint);font-style:italic}.f1{color:var(--accent)}
+:root[data-theme="light"] .k{color:#7b3fb5}
+.hover{position:fixed;z-index:30;width:330px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.35);padding:12px;display:none}
+.hover .m{font-weight:600;margin:6px 0}
+.hover .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+/* graph */
+.gr{position:relative}
+.gr svg{position:absolute;left:0;top:0;pointer-events:none}
+.gri{display:flex;align-items:center;height:36px;padding-right:12px;gap:8px;cursor:pointer;border-bottom:1px solid transparent;min-width:0}
+.gri:hover{background:var(--panel2)} .gri.on{background:var(--accent-soft)}
+.gri .m{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gri .meta{color:var(--faint);font-size:11.5px;white-space:nowrap}
+.hash{font:12px var(--mono);color:var(--accent)}
+.kv{display:grid;grid-template-columns:90px 1fr;gap:6px 12px;padding:12px 14px;font-size:12.5px}
+.kv dt{color:var(--faint)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+/* diff */
+.diff{display:grid;grid-template-columns:1fr 1fr;font:12px/20px var(--mono);min-width:760px}
+.diff.uni{grid-template-columns:1fr}
+.dh{grid-column:1/-1;padding:5px 12px;background:var(--panel2);color:var(--mute);border-block:1px solid var(--line)}
+.dl{display:grid;grid-template-columns:40px 1fr;white-space:pre;min-width:0;overflow:hidden}
+.dl i{font-style:normal;text-align:right;padding-right:8px;color:var(--faint);user-select:none}
+.dl.a{background:var(--add-bg)} .dl.d{background:var(--del-bg)} .dl.e{background:var(--panel2);opacity:.5}
+.dl.a b{color:var(--add);font-weight:400}.dl.d b{color:var(--del);font-weight:400}
+.dl b{font-weight:400}
+.hunk-act{display:inline-flex;gap:6px;float:right}
+/* inputs */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{border:0;background:var(--panel2);padding:0 10px;height:26px;color:var(--mute)}
+.seg button.on{background:var(--accent-soft);color:var(--accent)}
+textarea.field{height:auto;padding:8px 9px;width:100%;resize:none;display:block}
+.cb{accent-color:var(--accent)}
+table{border-collapse:collapse;width:100%}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);text-align:left;padding:8px 12px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr.bt:hover td{background:var(--panel2)}
+.tw{overflow:auto}
+.later{display:grid;place-items:center;height:100%;text-align:center;color:var(--mute);padding:30px}
+.later div{max-width:420px}
+/* palette */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:40;align-items:flex-start;justify-content:center;padding-top:12vh}
+.scrim.on{display:flex}
+.pal{width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pal input{width:100%;height:44px;border:0;border-bottom:1px solid var(--line);background:transparent;padding:0 16px;font-size:14px}
+.pal .it{display:flex;gap:10px;padding:8px 16px;cursor:pointer;align-items:center}
+.pal .it.on{background:var(--accent-soft)}
+.pal .it span:last-child{margin-left:auto}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:6px;display:none;z-index:50}
+.proto{font-size:11px;color:var(--mod);background:var(--mod-bg);padding:2px 8px;border-radius:9px}
+@media(max-width:700px){
+  .app{grid-template-columns:52px minmax(0,1fr)} .lbl,.repo-chip,.nav h6,.nav .n{display:none}
+  .nav a,.side-foot a{justify-content:center}
+  .split,.split.three{grid-template-columns:1fr} .split .pane+.pane{border-left:0;border-top:1px solid var(--line)}
+  .hide-s{display:none}
+}
+</style>
+
+<div class="app" id="app">
+  <aside>
+    <div class="repo-chip" id="chip"><small class="faint">No repository open</small></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <a data-go="settings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2L10 21h4l.6-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg><span class="lbl">Settings</span></a>
+      <a id="kb"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/></svg><span class="lbl">Shortcuts</span></a>
+      <a id="tgl"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg><span class="lbl">Collapse <span class="kbd">⌘B</span></span></a>
+      <div class="faint lbl" style="padding:4px 8px;font-size:11px">v0.1.0 prototype</div>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <div class="crumb" id="crumb">Dashboard</div>
+      <span class="proto hide-s">Prototype · sample data</span>
+      <div class="spacer"></div>
+      <button class="btn hide-s" id="palbtn">Search or run a command <span class="kbd">⌘K</span></button>
+      <button class="btn ghost" id="theme" title="Toggle theme">◐</button>
+    </div>
+    <section class="screen" id="s-dashboard"></section>
+    <section class="screen" id="s-overview"></section>
+    <section class="screen split three" id="s-files"></section>
+    <section class="screen split three" id="s-commits"></section>
+    <section class="screen" id="s-branches"></section>
+    <section class="screen split three" id="s-changes"></section>
+    <section class="screen" id="s-compare"></section>
+    <section class="screen" id="s-later"></section>
+  </main>
+</div>
+<div class="hover" id="hover"></div>
+<div class="scrim" id="scrim"><div class="pal"><input id="pin" placeholder="Type a command or search…" autocomplete="off"><div id="pitems"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const I={
+ dash:'<path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/>',
+ repo:'<path d="M4 4v16h16M4 4a2 2 0 0 1 2-2h12v14H6a2 2 0 0 0-2 2"/>',
+ over:'<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',
+ files:'<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+ commit:'<circle cx="12" cy="12" r="3.5"/><path d="M3 12h5.5M15.5 12H21"/>',
+ branch:'<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/>',
+ chg:'<path d="M12 5v14M5 12h14"/>',
+ cmp:'<path d="M8 3v12M16 21V9M8 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM16 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>',
+ search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+ tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
+ stash:'<path d="M4 8h16v12H4zM6 4h12v4H6z"/>',
+ chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'};
+const ic=k=>`<svg class="ic" viewBox="0 0 24 24">${I[k]}</svg>`;
+
+/* ---------- sample data ---------- */
+const P={ab:['Aiko Bell','#c4527a'],mr:['Marcus Reyes','#3d8f7a'],ds:['Dana Sokolov','#b0742a'],lk:['Leo Kim','#5a6fd6']};
+const av=k=>`<span class="av" style="background:${P[k][1]}" title="${P[k][0]}">${P[k][0].split(' ').map(w=>w[0]).join('')}</span>`;
+const repos=[
+ {n:'orbit-api',path:'~/Developer/orbit-api',b:'feature/rate-limiter',msg:'Add sliding window rate limiter',when:'2 hours ago',mod:5,st:'dirty',fav:true},
+ {n:'orbit-web',path:'~/Developer/orbit-web',b:'main',msg:'Bump vite to 5.4.11',when:'yesterday',mod:0,st:'clean',fav:true},
+ {n:'dotfiles',path:'~/Developer/dotfiles',b:'main',msg:'zsh: lazy-load nvm',when:'3 days ago',mod:2,st:'dirty',fav:false},
+ {n:'ledger-cli',path:'~/Developer/ledger-cli',b:'release/2.1',msg:'Fix rounding in monthly report',when:'last week',mod:0,st:'ahead 2',fav:false}];
+const C=[ // lane, parents (indexes), refs
+ {h:'a3f91c2',m:'Add sliding window rate limiter',a:'ab',d:'2 h ago',l:1,p:[1],r:['HEAD','feature/rate-limiter'],f:4,ad:182,de:12},
+ {h:'7be40d8',m:'Extract limiter config into settings',a:'ab',d:'5 h ago',l:1,p:[3],f:3,ad:41,de:19},
+ {h:'e12c9a0',m:'Merge pull request #212 from fix/token-refresh',a:'mr',d:'yesterday',l:0,p:[4,5],r:['origin/main','main'],f:6,ad:88,de:30},
+ {h:'5d08b7f',m:'Add Redis client wrapper',a:'ab',d:'yesterday',l:1,p:[6],f:2,ad:96,de:0},
+ {h:'c91a44e',m:'Release v1.8.0',a:'ds',d:'2 days ago',l:0,p:[6],r:['v1.8.0'],f:3,ad:12,de:12},
+ {h:'0fd2b61',m:'Refresh expired tokens before retry',a:'lk',d:'2 days ago',l:2,p:[7],r:['fix/token-refresh'],f:2,ad:34,de:8},
+ {h:'b6e7712',m:'Document webhook signature headers',a:'ds',d:'3 days ago',l:0,p:[8],f:1,ad:27,de:3},
+ {h:'48ac3d9',m:'Log token refresh failures',a:'lk',d:'3 days ago',l:2,p:[8],f:1,ad:9,de:1},
+ {h:'91c05ea',m:'Upgrade FastAPI to 0.115',a:'mr',d:'4 days ago',l:0,p:[9],f:3,ad:18,de:18},
+ {h:'2ee86f3',m:'Add health check endpoint',a:'mr',d:'5 days ago',l:0,p:[10],f:2,ad:44,de:2},
+ {h:'d47b108',m:'Initial project structure',a:'ds',d:'2 weeks ago',l:0,p:[],r:['v1.0.0'],f:14,ad:620,de:0}];
+const tree=[
+ ['src',[['api',[['routes.py','M'],['limiter.py','A'],['deps.py']]],['core',[['settings.py','M'],['redis_client.py']]],['main.py']]],
+ ['tests',[['test_limiter.py','A'],['test_routes.py']]],
+ ['docs',[['webhooks.md']]],
+ ['Dockerfile'],['pyproject.toml','M'],['README.md'],['.gitignore']];
+const code=`from __future__ import annotations
+import time
+from dataclasses import dataclass
+
+from .settings import RateLimitSettings
+from .redis_client import redis
+
+
+@dataclass(frozen=True)
+class Decision:
+    allowed: bool
+    remaining: int
+    retry_after: float
+
+
+class SlidingWindowLimiter:
+    """Allow \`limit\` requests per \`window\` seconds per key."""
+
+    def __init__(self, cfg: RateLimitSettings):
+        self.limit = cfg.limit
+        self.window = cfg.window_seconds
+
+    async def check(self, key: str) -> Decision:
+        now = time.time()
+        pipe = redis.pipeline()
+        pipe.zremrangebyscore(key, 0, now - self.window)
+        pipe.zadd(key, {str(now): now})
+        pipe.zcard(key)
+        _, _, count = await pipe.execute()
+        remaining = max(0, self.limit - count)
+        return Decision(count <= self.limit, remaining, self.window)`.split('\n');
+const blame=[ // [commit idx, authorKey] per line range start
+ [0,'ab',5],[3,'ab',3],[1,'ab',9],[3,'ab',1],[0,'ab',8]].flatMap(([c,a,n])=>Array(n).fill([c,a]));
+const diffA=[
+ ['hunk','@@ -41,9 +41,14 @@ def get_user(request)'],
+ [41,'  async def list_items(request):','e',41,'  async def list_items(request):'],
+ [42,'      user = await get_user(request)','e',42,'      user = await get_user(request)'],
+ [43,'-     return await repo.list(user.id)','d',43,'+     decision = await limiter.check(f"items:{user.id}")'],
+ [null,'','',44,'+     if not decision.allowed:'],
+ [null,'','',45,'+         raise HTTPException(429, headers={"Retry-After": str(int(decision.retry_after))})'],
+ [null,'','',46,'+     return await repo.list(user.id)'],
+ [44,'','e',47,''],
+ [45,'  @router.post("/items")','e',48,'  @router.post("/items")']];
+const changes=[
+ ['src/api/routes.py','M','+6 −1',false],['src/core/settings.py','M','+9 −0',false],['pyproject.toml','M','+1 −0',false],
+ ['src/api/limiter.py','A','+64',true],['tests/test_limiter.py','A','+71',true],['notes/scratch.txt','U','',false]];
+const branches=[
+ ['feature/rate-limiter',1,'a3f91c2','Add sliding window rate limiter','ab','2 h ago','origin/feature/rate-limiter',2,0,true],
+ ['main',1,'e12c9a0','Merge pull request #212','mr','yesterday','origin/main',0,0,false],
+ ['fix/token-refresh',1,'0fd2b61','Refresh expired tokens','lk','2 days ago','origin/fix/token-refresh',0,1,false],
+ ['chore/ci-cache',1,'33ab901','Cache pip wheels in CI','ds','1 week ago','—',0,0,false],
+ ['origin/release/1.8',0,'c91a44e','Release v1.8.0','ds','2 days ago','',0,0,false],
+ ['origin/dependabot/pip/redis-5.2',0,'8ac1e07','Bump redis from 5.0 to 5.2','ds','4 days ago','',0,0,false]];
+
+/* ---------- navigation ---------- */
+let repo=null, cur='dashboard', sel=0, selCommit=0, selChange=3, mode='split', treeOpen=new Set(['src','src/api']);
+const navDef=()=>repo?[
+ ['Workspace',[['dashboard','dash','Dashboard'],['repos','repo','Repositories']]],
+ ['Repository',[['overview','over','Overview'],['files','files','Files'],['commits','commit','Commits'],['branches','branch','Branches','4'],['changes','chg','Changes','6'],['compare','cmp','Compare']]],
+ ['Tools',[['search','search','Search'],['tags','tag','Tags','2'],['stashes','stash','Stashes','1'],['insights','chart','Insights']]]]
+:[['Workspace',[['dashboard','dash','Dashboard'],['repos','repo','Repositories']]]];
+function renderNav(){
+ $('#nav').innerHTML=navDef().map(([h,items])=>`<h6>${h}</h6>`+items.map(([k,i,l,n])=>`<a href="#${k}" class="${cur===k?'on':''}" title="${l}">${ic(i)}<span class="lbl">${l}</span>${n?`<span class="n">${n}</span>`:''}</a>`).join('')).join('');
+ $('#chip').innerHTML=repo?`<b>${repo.n}</b><span class="branch">${ic('branch')}${repo.b}</span>`:'<small class="faint">No repository open</small>';
+}
+const names={dashboard:'Dashboard',repos:'Repositories',overview:'Overview',files:'Files',commits:'Commits',branches:'Branches',changes:'Changes',compare:'Compare',search:'Search',tags:'Tags',stashes:'Stashes',insights:'Insights',settings:'Settings'};
+const real=['dashboard','overview','files','commits','branches','changes','compare'];
+function go(k){
+ if(k==='repos')k='dashboard';
+ if(!repo&&k!=='dashboard'&&k!=='settings')k='dashboard';
+ cur=k; document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+ const id=real.includes(k)?k:'later'; $('#s-'+id).classList.add('on');
+ if(id==='later')renderLater(k);
+ $('#crumb').textContent=(repo&&k!=='dashboard'?repo.n+' / ':'')+names[k];
+ renderNav(); if(location.hash!=='#'+k)history.replaceState(null,'','#'+k);
+}
+function openRepo(i){repo=repos[i];toast('Opened '+repo.n+' (read-only, nothing modified)');go('overview');renderAll();}
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
+
+/* ---------- screens ---------- */
+function renderDash(){
+ $('#s-dashboard').innerHTML=`<div class="pad">
+ <h1>Repositories</h1><div class="mute" style="margin-bottom:14px">Open a local folder. Nothing is changed until you act.</div>
+ <div class="drop"><div style="font-size:22px">⌂</div><div style="flex:1;min-width:200px"><b>Drop a repository folder here</b><div class="mute">or paste a path. We check for a <span class="mono">.git</span> directory first.</div></div>
+ <input class="field" id="pathin" placeholder="/Users/you/Developer/project" style="width:260px;max-width:100%"><button class="btn pri" id="openbtn">Open</button></div>
+ <div id="verr" style="color:var(--del);margin-top:8px;display:none"></div>
+ <h2>Favourites</h2><div class="cards">${repos.map((r,i)=>r.fav?card(r,i):'').join('')}</div>
+ <h2>Recent</h2><div class="cards">${repos.map((r,i)=>r.fav?'':card(r,i)).join('')}</div></div>`;
+ $('#openbtn').onclick=()=>{const v=$('#pathin').value.trim(),e=$('#verr');
+  if(!v){e.style.display='block';e.textContent='Enter a folder path first.';return}
+  const m=repos.findIndex(r=>r.path.endsWith(v.split('/').pop()));
+  if(m>=0)return openRepo(m);
+  e.style.display='block';e.textContent=`“${v}” is not a Git repository (no .git folder found). Choose the top-level folder of a repository, or run git init there first.`};
+ document.querySelectorAll('[data-open]').forEach(e=>e.onclick=ev=>{if(ev.target.closest('.star,.rm'))return;openRepo(+e.dataset.open)});
+ document.querySelectorAll('.star').forEach(b=>b.onclick=()=>{const r=repos[+b.dataset.i];r.fav=!r.fav;renderDash()});
+ document.querySelectorAll('.rm').forEach(b=>b.onclick=()=>toast('Removed from recent list (folder untouched)'));
+}
+const card=(r,i)=>`<div class="rc" data-open="${i}"><div class="h"><b>${r.n}</b><button class="star ${r.fav?'on':''}" data-i="${i}" title="Favourite">${r.fav?'★':'☆'}</button><button class="star rm" title="Remove from list">✕</button></div>
+ <div class="path">${r.path}</div><div class="branch">${ic('branch')}${r.b}</div><div class="msg">${r.msg}</div>
+ <div class="f"><span>${r.when}</span><span class="spacer"></span><span>${r.mod?`<span class="st M">M</span> ${r.mod} modified`:'<span class="dot" style="background:var(--add)"></span> clean'}</span>${r.st.startsWith('ahead')?`<span class="tag">↑2</span>`:''}</div></div>`;
+
+function renderOverview(){
+ $('#s-overview').innerHTML=`<div class="pad">
+ <div class="row"><div style="flex:1;min-width:220px"><h1>${repo.n}</h1><div class="mono faint">${repo.path}</div></div>
+ <div class="row"><button class="btn">⟳ Refresh</button><button class="btn" data-t="Fetched origin (2 new commits)">Fetch</button><button class="btn" data-t="Already up to date">Pull</button><button class="btn pri" data-t="Pushed 2 commits to origin/${repo.b}">Push ↑2</button></div></div>
+ <div class="stats" style="margin-top:16px"><div><small>Branch</small><b class="branch" style="font-size:14px">${repo.b}</b></div><div><small>Ahead / behind</small><b>↑2 ↓0</b></div><div><small>Branches</small><b>6</b></div><div><small>Tags</small><b>2</b></div><div><small>Uncommitted</small><b style="color:var(--mod)">6 files</b></div></div>
+ <div class="cols"><div><h2>Recent activity</h2><div class="list">${C.slice(0,6).map((c,i)=>`<div class="li click" data-c="${i}">${av(c.a)}<div class="t">${esc(c.m)}</div>${(c.r||[]).slice(0,1).map(refTag).join('')}<span class="hash">${c.h}</span><span class="faint hide-s">${c.d}</span></div>`).join('')}</div></div>
+ <div><h2>Working tree</h2><div class="list">${[['M','Modified',3],['A','Added',2],['D','Deleted',0],['R','Renamed',0],['U','Untracked',1]].map(([k,l,n])=>`<div class="li click" data-go="changes"><span class="st ${k}">${k}</span><div class="t">${l}</div><b>${n}</b></div>`).join('')}</div>
+ <div class="mute" style="margin-top:8px;font-size:12px">Click a category to open Changes.</div></div></div></div>`;
+ document.querySelectorAll('#s-overview [data-t]').forEach(b=>b.onclick=()=>toast(b.dataset.t));
+ document.querySelectorAll('#s-overview [data-c]').forEach(b=>b.onclick=()=>{selCommit=+b.dataset.c;renderCommits();go('commits')});
+ document.querySelectorAll('#s-overview [data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+}
+const refTag=r=>r==='HEAD'?`<span class="tag head">HEAD</span>`:/^v\d/.test(r)?`<span class="tag tg">⚑ ${r}</span>`:`<span class="tag br">${r}</span>`;
+
+function renderFiles(){
+ const rows=[];(function walk(items,pre,d){items.forEach(([n,ch,st])=>{
+  const isDir=Array.isArray(ch), path=pre+n;
+  const status=isDir?'':(ch||'');
+  rows.push(`<div class="tr ${path==='src/api/limiter.py'?'on':''}" style="padding-left:${10+d*14}px" data-p="${path}" data-d="${isDir?1:0}">${isDir?(treeOpen.has(path)?'▾':'▸'):'&nbsp;&nbsp;'}<span>${isDir?'📁':'·'}</span><span>${n}</span>${status?`<span class="s ${status==='M'?'':''}" style="color:var(--${status==='M'?'mod':'add'})">${status}</span>`:''}</div>`);
+  if(isDir&&treeOpen.has(path))walk(ch,path+'/',d+1)})})(tree,'',0);
+ const hl=l=>esc(l).replace(/^(\s*)(from|import|class|def|async def|return|raise)\b/,'$1<span class="k">$2</span>').replace(/(&quot;&quot;&quot;.*|"""[^"]*"""?)/,'<span class="s1">$1</span>').replace(/\b(self|await)\b/g,'<span class="k">$1</span>').replace(/(#.*)$/,'<span class="c">$1</span>');
+ const lines=code.map((l,i)=>{const b=blame[i]||[0,'ab'],first=i===0||(blame[i-1]||[])[0]!==b[0];
+  return `<div class="cl ${i===22?'cur':''}" data-i="${i}"><span class="bl ${first?'first':''}" data-b="${b[0]}">${first?`${P[b[1]][0].split(' ')[0]} · ${C[b[0]].d}`:''}</span><span class="no">${i+1}</span><span class="tx">${hl(l)}${i===22?`<span class="ghost-blame">Aiko Bell, 2 hours ago · Add sliding window rate limiter</span>`:''}</span></div>`}).join('');
+ $('#s-files').innerHTML=`<div class="pane" style="max-width:none"><div class="ph"><input placeholder="Filter files…"><button class="btn ghost" title="Collapse all">⊟</button></div>${rows.join('')}</div>
+ <div class="pane plain" style="display:flex;flex-direction:column"><div class="ph"><span class="mono mute">src / api / <b style="color:var(--fg)">limiter.py</b></span><span class="faint">1.8 KB · Python · ${code.length} lines</span><span class="spacer"></span><button class="btn" data-t="Copied">Copy</button><button class="btn">Wrap</button><button class="btn" data-t="Showing file history (5 revisions)">File history</button></div>
+ <div style="overflow:auto;flex:1;background:var(--panel)"><div class="code">${lines}</div></div>
+ <div style="padding:6px 12px;border-top:1px solid var(--line);background:var(--panel);font-size:12px" class="mute">Line 23 · inline blame is on · hover the gutter for the commit card · read-only</div></div>`;
+ document.querySelectorAll('#s-files .tr').forEach(e=>e.onclick=()=>{if(e.dataset.d==='1'){const p=e.dataset.p;treeOpen.has(p)?treeOpen.delete(p):treeOpen.add(p);renderFiles()}});
+ document.querySelectorAll('#s-files [data-t]').forEach(b=>b.onclick=()=>toast(b.dataset.t));
+ document.querySelectorAll('#s-files .bl.first,#s-files .cl.cur .ghost-blame').forEach(e=>{
+  const ci=e.dataset.b!==undefined?+e.dataset.b:0;
+  e.onmouseenter=ev=>showHover(ci,ev);e.onmouseleave=()=>$('#hover').style.display='none'});
+}
+function showHover(i,ev){const c=C[i],h=$('#hover'),r=ev.target.getBoundingClientRect();
+ h.innerHTML=`<div class="row" style="gap:8px">${av(c.a)}<b>${P[c.a][0]}</b><span class="faint">${c.d}</span></div><div class="m">${esc(c.m)}</div>
+ <div class="mono mute">${c.h} · ${c.f} files · <span class="plus">+${c.ad}</span> <span class="minus">−${c.de}</span></div>
+ <div class="acts"><span class="btn">Open diff</span><span class="btn">Browse files here</span><span class="btn">Copy hash</span></div>`;
+ h.style.display='block';h.style.left=Math.min(r.left+10,innerWidth-350)+'px';h.style.top=Math.min(r.bottom+6,innerHeight-190)+'px'}
+
+const LH=36,LW=16;
+function renderCommits(){
+ const W=70, pos=C.map((c,i)=>[12+c.l*LW,i*LH+LH/2]), col=['#7d93ff','#4cc38a','#e5a84b','#d7708f'];
+ let svg=`<svg width="${W}" height="${C.length*LH}">`;
+ C.forEach((c,i)=>c.p.forEach((pi,k)=>{const [x1,y1]=pos[i],[x2,y2]=pos[pi];
+  const mid=(y1+y2)/2,sc=col[Math.max(c.l,C[pi].l)%4]; svg+=x1===x2?`<path d="M${x1} ${y1}V${y2}" stroke="${sc}" stroke-width="2" fill="none"/>`:`<path d="M${x1} ${y1}C${x1} ${mid} ${x2} ${mid} ${x2} ${y2}" stroke="${sc}" stroke-width="2" fill="none"/>`}));
+ C.forEach((c,i)=>{const [x,y]=pos[i];svg+=`<circle cx="${x}" cy="${y}" r="${c.p.length>1?5.5:4.5}" fill="${c.p.length>1?'var(--panel)':col[c.l%4]}" stroke="${col[c.l%4]}" stroke-width="2"/>`});
+ svg+='</svg>';
+ const rowsH=C.map((c,i)=>`<div class="gri ${i===selCommit?'on':''}" data-i="${i}" style="padding-left:${W}px">${(c.r||[]).map(refTag).join('')}<span class="m">${esc(c.m)}</span><span class="hash hide-s">${c.h}</span>${av(c.a)}<span class="meta hide-s">${c.d}</span></div>`).join('');
+ const c=C[selCommit];
+ $('#s-commits').innerHTML=`<div class="pane"><div class="ph"><input placeholder="Filter by message, author, hash, file path…"><select class="field"><option>All branches</option><option>main</option></select><button class="btn ghost" title="Date range">📅</button></div><div class="gr">${svg}${rowsH}</div><div class="faint" style="padding:10px;text-align:center;font-size:12px">Loaded 11 of 1,284 commits · scroll to load more</div></div>
+ <div class="pane"><div class="ph"><span class="hash" style="font-size:13px">${c.h}</span>${(c.r||[]).map(refTag).join('')}<span class="spacer"></span><button class="btn" data-t="Copied hash">Copy hash</button><button class="btn" data-t="Pick another commit to compare">Compare with…</button></div>
+ <div style="padding:14px 14px 4px;font-size:15px;font-weight:600">${esc(c.m)}</div>
+ <dl class="kv"><dt>Author</dt><dd>${av(c.a)} ${P[c.a][0]} <span class="faint">&lt;${P[c.a][0].split(' ')[0].toLowerCase()}@orbit.dev&gt;</span></dd><dt>Date</dt><dd>${c.d} · Nov 16, 2026 14:22</dd><dt>Commit</dt><dd class="mono">${c.h}4c1be09d77a2f0e3d51a8b6c</dd><dt>Parents</dt><dd class="mono">${c.p.map(p=>C[p].h).join(', ')||'none (root commit)'}</dd><dt>Changed</dt><dd>${c.f} files <span class="plus">+${c.ad}</span> <span class="minus">−${c.de}</span></dd></dl>
+ <div class="ph" style="border-top:1px solid var(--line)"><b>Files changed</b><span class="spacer"></span><button class="btn" data-go="changes">View diff</button><button class="btn" data-go="files">Browse files here</button></div>
+ ${[['src/api/limiter.py','A','+64'],['src/core/settings.py','M','+9 −0'],['tests/test_limiter.py','A','+71'],['src/api/routes.py','M','+6 −1']].slice(0,Math.min(4,c.f)).map(f=>`<div class="li click"><span class="st ${f[1]}">${f[1]}</span><span class="t mono">${f[0]}</span><span class="mono faint">${f[2]}</span></div>`).join('')}</div>`;
+ document.querySelectorAll('#s-commits .gri').forEach(e=>e.onclick=()=>{selCommit=+e.dataset.i;renderCommits()});
+ document.querySelectorAll('#s-commits [data-t]').forEach(b=>b.onclick=()=>toast(b.dataset.t));
+ document.querySelectorAll('#s-commits [data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+}
+
+function renderBranches(){
+ $('#s-branches').innerHTML=`<div class="pad"><div class="row"><div style="flex:1"><h1>Branches</h1><div class="mute">2 local with upstream · 1 local only · 2 remote</div></div><button class="btn pri" id="nb">+ New branch</button></div>
+ <div class="list tw" style="margin-top:14px"><table><tr><th></th><th>Name</th><th>Last commit</th><th>Author</th><th>Date</th><th>Upstream</th><th>↑ / ↓</th><th></th></tr>
+ ${branches.map(b=>`<tr class="bt"><td>${b[9]?'<span class="tag head">HEAD</span>':b[1]?'<span class="tag">local</span>':'<span class="tag" style="color:var(--mod)">remote</span>'}</td><td class="mono" style="color:var(--accent)">${b[0]}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis"><span class="hash">${b[2]}</span> ${b[3]}</td><td>${av(b[4])}</td><td class="faint">${b[5]}</td><td class="mono faint">${b[6]}</td><td class="mono">${b[1]?`<span class="plus">↑${b[7]}</span> <span class="minus">↓${b[8]}</span>`:''}</td>
+ <td><span class="row" style="gap:4px;flex-wrap:nowrap">${b[9]?'':`<button class="btn" data-t="Checked out ${b[0]}">Checkout</button>`}<button class="btn" data-go="compare">Compare</button><button class="btn danger" ${b[9]?'disabled title="The checked-out branch cannot be deleted" style="opacity:.4;cursor:not-allowed"':`data-del="${b[0]}"`}>Delete</button></span></td></tr>`).join('')}</table></div>
+ <div id="dlg"></div></div>`;
+ document.querySelectorAll('#s-branches [data-t]').forEach(b=>b.onclick=()=>toast(b.dataset.t));
+ document.querySelectorAll('#s-branches [data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const n=b.dataset.del;$('#dlg').innerHTML=`<div class="list" style="margin-top:14px;padding:14px;border-color:var(--del)"><b>Delete branch <span class="mono">${n}</span>?</b><div class="mute" style="margin:6px 0 10px">${n==='main'?'This branch has not been merged anywhere else. ':''}Commits only reachable from this branch could be lost. Git keeps them in the reflog for about 30 days.</div><div class="row"><button class="btn danger" data-t="Deleted (prototype: nothing really happened)" id="cd">Delete branch</button><button class="btn" id="cc">Cancel</button></div></div>`;$('#cc').onclick=()=>$('#dlg').innerHTML='';$('#cd').onclick=()=>{toast('Prototype: nothing was deleted');$('#dlg').innerHTML=''}});
+ $('#nb').onclick=()=>$('#dlg').innerHTML=`<div class="list" style="margin-top:14px;padding:14px"><b>Create branch</b><div class="row" style="margin:10px 0"><input class="field" id="bn" placeholder="feature/name" style="width:240px"><span class="mute">from</span><select class="field"><option>feature/rate-limiter (current)</option><option>main</option></select></div><div id="be" style="color:var(--del);margin-bottom:8px"></div><label class="row" style="gap:6px"><input type="checkbox" class="cb" checked> Check out after creating</label><div class="row" style="margin-top:10px"><button class="btn pri" id="bc">Create</button><button class="btn" id="cc">Cancel</button></div></div>`,
+  $('#cc').onclick=()=>$('#dlg').innerHTML='',$('#bc').onclick=()=>{const v=$('#bn').value;const bad=!v?'Enter a branch name.':/\s|\.\.|~|\^|:|\?|\*|\[|\\|@\{|\.lock$|\/$|^-/.test(v)?'Branch names cannot contain spaces, “..”, “~”, “^”, “:”, “?”, “*”, “[” or end in “.lock”.':branches.some(b=>b[0]===v)?`A branch named “${v}” already exists.`:'';$('#be').textContent=bad;if(!bad){toast('Prototype: would create '+v);$('#dlg').innerHTML=''}};
+}
+
+function dl(side,n,t,cls){return `<div class="dl ${cls||''}"><i>${n??''}</i><b>${esc(t)}</b></div>`}
+function renderChanges(){
+ const grp=(title,filt)=>{const it=changes.map((c,i)=>[c,i]).filter(([c])=>filt(c));return `<div class="ph" style="top:auto;position:static;background:var(--panel2)"><b>${title}</b><span class="faint">${it.length}</span><span class="spacer"></span><button class="btn ghost" data-all="${title}">${title==='Staged'?'Unstage all':'Stage all'}</button></div>`+it.map(([c,i])=>`<div class="li click ${i===selChange?'on':''}" data-i="${i}" style="${i===selChange?'background:var(--accent-soft)':''}"><input type="checkbox" class="cb" data-st="${i}" ${c[3]?'checked':''} title="${c[3]?'Unstage':'Stage'}"><span class="st ${c[1]}">${c[1]}</span><span class="t mono">${c[0]}</span><span class="mono faint">${c[2]}</span></div>`).join('')};
+ const rowsD=diffA.map(r=>{if(r[0]==='hunk')return `<div class="dh">${r[1]}<span class="hunk-act"><button class="btn" data-t="Staged hunk">Stage hunk</button><button class="btn danger" data-t="Discard needs confirmation">Discard</button></span></div>`;
+  if(mode==='split')return dl(0,r[0],r[1].replace(/^[-+ ] ?/,''),r[2])+dl(0,r[3],r[4].replace(/^[-+ ] ?/,''),r[2]==='d'?'a':r[2]==='e'?'e':r[4].startsWith('+')?'a':'')});
+ const uni=diffA.slice(1).map(r=>[r[2]==='d'||r[2]==='e'?dl(0,r[0],r[1],r[2]):'' ,r[4]&&r[4].startsWith('+')?dl(0,r[3],r[4],'a'):r[2]==='e'&&r[4]?'':''].join('')).join('');
+ $('#s-changes').innerHTML=`<div class="pane" style="display:flex;flex-direction:column"><div class="ph"><input placeholder="Filter by path…"><select class="field"><option>All</option><option>Modified</option><option>Added</option></select></div>
+ <div style="flex:1;overflow:auto">${grp('Unstaged',c=>!c[3])}${grp('Staged',c=>c[3])}</div>
+ <div style="border-top:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:6px"><input class="field" id="cm" placeholder="Commit message (required)"><textarea class="field" rows="2" placeholder="Description (optional)"></textarea><div id="ce" style="color:var(--del);font-size:12px"></div><button class="btn pri" id="cb" style="justify-content:center">Commit ${changes.filter(c=>c[3]).length} staged files <span class="kbd" style="color:#fff;background:transparent;border-color:rgba(255,255,255,.4)">⌘↵</span></button><div class="faint" style="font-size:11.5px">Files are never staged automatically.</div></div></div>
+ <div class="pane plain" style="display:flex;flex-direction:column;overflow:hidden"><div class="ph"><span class="st ${changes[selChange][1]}">${changes[selChange][1]}</span><span class="mono">${changes[selChange][0]}</span><span class="spacer"></span><div class="seg"><button class="${mode==='split'?'on':''}" data-m="split">Split</button><button class="${mode==='uni'?'on':''}" data-m="uni">Unified</button></div></div>
+ <div style="overflow:auto;flex:1;background:var(--panel)"><div class="diff ${mode==='uni'?'uni':''}">${mode==='split'?rowsD.join(''):`<div class="dh">${diffA[0][1]}</div>`+uni}</div></div></div>`;
+ document.querySelectorAll('#s-changes .li').forEach(e=>e.onclick=ev=>{if(ev.target.type==='checkbox')return;selChange=+e.dataset.i;renderChanges()});
+ document.querySelectorAll('[data-st]').forEach(b=>b.onchange=()=>{changes[+b.dataset.st][3]=b.checked;toast(b.checked?'Staged':'Unstaged');renderChanges()});
+ document.querySelectorAll('[data-all]').forEach(b=>b.onclick=()=>{const s=b.dataset.all==='Unstaged';changes.forEach(c=>{if(c[3]!==s)c[3]=s});renderChanges()});
+ document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderChanges()});
+ document.querySelectorAll('#s-changes [data-t]').forEach(b=>b.onclick=()=>toast(b.dataset.t));
+ $('#cb').onclick=()=>{const n=changes.filter(c=>c[3]).length;$('#ce').textContent=!$('#cm').value.trim()?'Write a commit message first.':!n?'Stage at least one file to commit.':'';if(!$('#ce').textContent)toast('Prototype: would commit '+n+' files')};
+}
+
+function renderCompare(){
+ $('#s-compare').innerHTML=`<div class="pad"><h1>Compare</h1><div class="row" style="margin:10px 0 4px"><div class="seg"><button class="on">Branch ↔ branch</button><button>Commit ↔ commit</button><button>Branch ↔ working tree</button><button>HEAD ↔ working tree</button></div></div>
+ <div class="row" style="margin:12px 0"><span class="mute">Base</span><select class="field"><option>main</option></select><span class="mute">←</span><span class="mute">Compare</span><select class="field"><option>feature/rate-limiter</option></select></div>
+ <div class="stats"><div><small>Ahead</small><b class="plus">↑ 4</b></div><div><small>Behind</small><b class="minus">↓ 0</b></div><div><small>Files</small><b>9</b></div><div><small>Added</small><b>3</b></div><div><small>Modified</small><b>6</b></div><div><small>Lines</small><b><span class="plus">+312</span> <span class="minus">−41</span></b></div></div>
+ <div class="cols"><div><h2>Changed files</h2><div class="list">${[['src/api/limiter.py','A','+182'],['tests/test_limiter.py','A','+71'],['docs/rate-limits.md','A','+38'],['src/api/routes.py','M','+6 −1'],['src/core/settings.py','M','+9'],['src/core/redis_client.py','M','+4 −2'],['pyproject.toml','M','+1'],['src/main.py','M','+2 −1']].map(f=>`<div class="li click" data-go="changes"><span class="st ${f[1]}">${f[1]}</span><span class="t mono">${f[0]}</span><span class="mono faint">${f[2]}</span></div>`).join('')}</div></div>
+ <div><h2>Commits in compare, not in base</h2><div class="list">${C.slice(0,4).map(c=>`<div class="li">${av(c.a)}<span class="t">${esc(c.m)}</span><span class="hash">${c.h}</span></div>`).join('')}</div></div></div></div>`;
+ document.querySelectorAll('#s-compare [data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+}
+function renderLater(k){
+ const t={search:'Global search across files, file contents (regex, case, whole word), commits, branches and tags.',tags:'Tag explorer with create, delete and compare.',stashes:'Stash manager: view diff, apply, pop, delete.',insights:'Commit activity, contributors, hot files and directories.',settings:'Appearance, Git path, diff defaults, excluded folders, shortcuts.'}[k];
+ $('#s-later').innerHTML=`<div class="later"><div><h1>${names[k]}</h1><p>${t}</p><p class="faint">Designed in the plan. Not drawn in this prototype.</p></div></div>`}
+function renderAll(){renderDash();renderOverview();renderFiles();renderCommits();renderBranches();renderChanges();renderCompare()}
+
+/* ---------- palette & shortcuts ---------- */
+const cmds=[['Open repository','⌘O',()=>go('dashboard')],['View commits','',()=>go('commits')],['View changes','',()=>go('changes')],['Compare branches','',()=>go('compare')],['Switch branch','',()=>go('branches')],['Create branch','',()=>{go('branches');setTimeout(()=>$('#nb')&&$('#nb').click(),50)}],['Search files','⇧⌘F',()=>go('files')],['Search commits','',()=>go('commits')],['Refresh repository','⌘R',()=>toast('Refreshed')],['Open settings','',()=>go('settings')]];
+let pi=0;
+function pal(open){$('#scrim').classList.toggle('on',open);if(open){$('#pin').value='';drawPal();$('#pin').focus()}}
+function drawPal(){const q=$('#pin').value.toLowerCase(),L=cmds.filter(c=>c[0].toLowerCase().includes(q));pi=Math.min(pi,Math.max(0,L.length-1));
+ $('#pitems').innerHTML=L.map((c,i)=>`<div class="it ${i===pi?'on':''}" data-i="${i}"><span>${c[0]}</span><span class="kbd">${c[1]||'↵'}</span></div>`).join('')||'<div class="it faint">No matching command</div>';
+ document.querySelectorAll('#pitems .it[data-i]').forEach(e=>e.onclick=()=>{pal(false);L[+e.dataset.i][2]()});return L}
+$('#pin').oninput=()=>{pi=0;drawPal()};
+$('#pin').onkeydown=e=>{const L=drawPal();if(e.key==='ArrowDown'){pi=Math.min(pi+1,L.length-1);drawPal();e.preventDefault()}else if(e.key==='ArrowUp'){pi=Math.max(0,pi-1);drawPal();e.preventDefault()}else if(e.key==='Enter'&&L[pi]){pal(false);L[pi][2]()}};
+$('#scrim').onclick=e=>{if(e.target.id==='scrim')pal(false)};
+$('#palbtn').onclick=()=>pal(true);
+addEventListener('keydown',e=>{const m=e.metaKey||e.ctrlKey;
+ if(m&&e.key==='k'){e.preventDefault();pal(true)} else if(e.key==='Escape')pal(false);
+ else if(m&&e.key==='b'){e.preventDefault();$('#app').classList.toggle('collapsed')}
+ else if(m&&e.key==='Enter'&&cur==='changes')$('#cb')?.click()});
+$('#tgl').onclick=()=>$('#app').classList.toggle('collapsed');
+$('#kb').onclick=()=>toast('⌘K palette · ⌘B sidebar · ⌘O open · ⌘R refresh · ⌘↵ commit · Esc close');
+document.querySelectorAll('[data-go]').forEach(a=>a.onclick=()=>go(a.dataset.go));
+$('#theme').onclick=()=>{const r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme:dark)').matches);r.dataset.theme=d?'light':'dark'};
+addEventListener('hashchange',()=>go(location.hash.slice(1)||'dashboard'));
+renderAll();go((location.hash.slice(1))||'dashboard');
+</script>
