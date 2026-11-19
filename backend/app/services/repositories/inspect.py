@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from app.services.git.runner import GitError, GitRunner
+from app.services.repositories.paths import normalize_path
 
 runner = GitRunner()
 
@@ -34,6 +35,7 @@ class RepoInfo:
 
 
 def inspect_repo(path: str) -> RepoInfo:
+    path = normalize_path(path)
     p = Path(path).expanduser()
     if not p.exists():
         return RepoInfo(False, path, error=f"'{path}' does not exist.")

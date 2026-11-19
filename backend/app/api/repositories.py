@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import subprocess
-import sys
-
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.repositories import FavouriteBody, PathBody
 from app.services.git.runner import GitNotFoundError
-from app.services.repositories import store
+from app.services.repositories import paths, store
 from app.services.repositories.inspect import inspect_repo
 
 router = APIRouter(prefix="/api")
@@ -65,11 +62,8 @@ def forget(body: PathBody):
 
 @router.post("/system/pick-folder")
 def pick_folder():
-    """Open the native folder dialog (macOS). Elsewhere the UI asks for a pasted path."""
-    if sys.platform != "darwin":
-        raise HTTPException(501, "The native folder picker is only available on macOS. Paste the path instead.")
-    script = 'POSIX path of (choose folder with prompt "Choose a Git repository")'
-    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        return {"path": None}  # user cancelled
-    return {"path": proc.stdout.strip().rstrip("/")}
+    """Open the native folder dialog (macOS, Windows dialog via WSL, or zenity). Otherwise the UI asks for a pasted path."""
+    try:
+        return {"path": paths.pick_folder()}  # None = user cancelled
+    except NotImplementedError as exc:
+        raise HTTPException(501, str(exc)) from exc
